@@ -5,12 +5,13 @@
 #include <regex>
 #include <assert.h>
 #include <iostream>
+#include <map>
+#include <set>
 
 /* This is effectively a mockup of a real parser - big WIP */
 ExportsDef::ExportsDef(const std::string& path)
 {
     std::ifstream file(path);
-    library = path;
 
     if (!file)
     {
@@ -105,21 +106,29 @@ ExportsDef::ExportsDef(const std::string& path)
                 }
                 if (exportName != "")
                 {
-                    exprt.exportAs = exportName;
+                    exprt.exportFrom = exportName;
                 }
-                exprt.name = functionName;
+                exprt.exportAs = functionName;
 
                 if (exprt.ordinal == 0)
                 {
                     exprt.ordinal = freeOrdinal--;
                 }
                
-                if (exports.count(exprt) && exports.find(exprt)->exportAs != "")
+                auto it = std::find_if(
+                    exports.begin(), 
+                    exports.end(), 
+                    [&](const DefExport& e2)
+                    {
+                        return exprt.ordinal == e2.ordinal;
+                    });
+
+                if (it != exports.end() && it->exportFrom != "")
                 {
-                    std::cout << "Duplicate " << exprt.name << "=" << exprt.exportAs << " @" << exprt.ordinal << "\n";
+                    std::cout << "Duplicate " << exprt.exportAs << "=" << exprt.exportFrom << " @" << exprt.ordinal << "\n";
                     continue;
                 }
-                exports.insert(exprt);
+                exports.push_back(exprt);
             }
             else
             {
@@ -129,17 +138,22 @@ ExportsDef::ExportsDef(const std::string& path)
     }
 }
 
-const std::set<DefExport>& ExportsDef::GetExports() const
+std::vector<DefExport>& ExportsDef::GetExports()
+{
+    return exports;
+}
+
+const std::vector<DefExport>& ExportsDef::GetExports() const
 {
     return exports;
 }
 
 DefExport::operator std::string() const
 {
-    std::string result = this->name;
-    if (exportAs != "")
+    std::string result = this->exportAs;
+    if (exportFrom != "")
     {
-        result += " = " + exportAs;
+        result += " = " + exportFrom;
     }
     if (ordinal > 0)
     {
@@ -150,34 +164,50 @@ DefExport::operator std::string() const
 
 const std::string ExportsDef::Regenerate(const std::string& libraryName) const
 {
-    std::set<
-        std::reference_wrapper<const DefExport>, 
-        decltype([](const DefExport& a, const DefExport& b) 
-                 {
-                     return a < b; 
-                 })> unasignedExports;
+    struct Group
+    {
+        using ExportSet = std::set<
+            std::reference_wrapper<const DefExport>,
+            decltype([](const DefExport& a, const DefExport& b)
+                     {
+                         return a < b;
+                     })>;
 
+        ExportSet exports;
+
+        void Regenerate(std::string& result) const
+        {
+            for (const DefExport& e : exports)
+            {
+                result += "    " + (std::string)(e) + "\n";
+            }
+        }
+    };
+
+    std::map<std::string, Group> groups;
     std::set<std::ptrdiff_t> usedOrdinals;
+
 
     std::string result = "LIBRARY " + libraryName + "\nEXPORTS\n";
 
     for (auto& defExport : exports)
     {
-        if (defExport.ordinal < 0)
-        {
-            unasignedExports.insert(defExport);
-            continue;
-        }
-        
-        usedOrdinals.insert(defExport.ordinal);
-        result += "    " + (std::string)defExport + "\n";
+        groups[defExport.group].exports.insert(std::ref(defExport));
     }
 
-    std::ptrdiff_t tryOrdinal = 1;
-    for (const DefExport& defExport : unasignedExports)
+    for (auto& [groupName, group] : groups)
     {
-        result += "   " + (std::string)defExport + "\n";
+        /* Do the unsorted group last. */
+        if (groupName == "")
+        {
+            continue;
+        }
+
+        result += std::string("\n    ; ") + groupName + "\n";
+        group.Regenerate(result);
     }
+    result += "\n    ; Not found in the COREDLL code\n";
+    groups[""].Regenerate(result);
 
     return result;
 }

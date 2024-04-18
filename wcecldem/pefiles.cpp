@@ -11,7 +11,7 @@ static std::string GetFilenameFromPath(const std::string& path)
 
 PeFile::PeFile(const std::string& path) :
     peFile(fopen(path.c_str(), "rb")),
-    name(GetFilenameFromPath(path))
+    exportAs(GetFilenameFromPath(path))
 {
 
     if (std::fread(&dosHeader, sizeof(dosHeader), 1, peFile) != 1)
@@ -142,13 +142,13 @@ void PeFile::HandleImports(PeUsage& peUsage)
                         }
                         return "";
                     };
-                imprt->name = findName();
+                imprt->exportAs = findName();
             }
             else
             {
-                std::string name = GetStringFromRva(iltEntry);
-                exprt = dll->GetExport(name);
-                imprt->name = name;
+                std::string exportAs = GetStringFromRva(iltEntry);
+                exprt = dll->GetExport(exportAs);
+                imprt->exportAs = exportAs;
                 if (exprt != nullptr)
                 {
                     imprt->ordinal = exprt->ordinal;
@@ -216,29 +216,29 @@ void PeFile::HandleExports(PeUsage& peUsage)
     {
         uint16_t ordinal = 0;
         DWORD nameRva;
-        std::string name;
+        std::string exportAs;
 
         Read(&ordinal, exportDirectory.AddressOfNameOrdinals + i * sizeof(ordinal), sizeof(ordinal));
         Read(&nameRva, exportDirectory.AddressOfNames + i * sizeof(nameRva), sizeof(nameRva));
 
-        name = GetStringFromRva(nameRva);
+        exportAs = GetStringFromRva(nameRva);
 
         auto exprt = exports.at(ordinal + exportDirectory.Base);
-        namedExports[name] = exprt;
-        exprt->names.insert(name);
+        namedExports[exportAs] = exprt;
+        exprt->names.insert(exportAs);
     }
 }
 
 const std::string& PeFile::GetName() const
 {
-    return name;
+    return exportAs;
 }
 
-std::shared_ptr<const Export> PeFile::GetExport(std::string name) const
+std::shared_ptr<const Export> PeFile::GetExport(std::string exportAs) const
 {
-    if (namedExports.contains(name))
+    if (namedExports.contains(exportAs))
     {
-        return namedExports.at(name);
+        return namedExports.at(exportAs);
     }
     return nullptr;
 }
@@ -396,8 +396,8 @@ FileView::FileView(const std::set<std::shared_ptr<PeFile>>& imageSet) :
     }
 }
 
-Section::Section(std::string name, DWORD virtualAddress, DWORD sizeInFile, DWORD sizeVirtual) :
-    name(name),
+Section::Section(std::string exportAs, DWORD virtualAddress, DWORD sizeInFile, DWORD sizeVirtual) :
+    exportAs(exportAs),
     virtualAddress(virtualAddress),
     sizeInFile(sizeInFile),
     sizeVirtual(sizeVirtual),
@@ -454,7 +454,7 @@ auto Section::operator<=>(const Section& other) const
 Section::Section(Section&& other) noexcept
 {
     this->data = std::move(other.data);
-    this->name = std::move(other.name);
+    this->exportAs = std::move(other.exportAs);
     this->sizeInFile = std::move(other.sizeInFile);
     this->virtualAddress = std::move(other.virtualAddress);
     this->sizeVirtual = std::move(other.sizeVirtual);

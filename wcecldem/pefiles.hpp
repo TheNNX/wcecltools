@@ -15,7 +15,7 @@ struct Import
 {
     std::weak_ptr<Dependency> dependency;
     DWORD ordinal;
-    std::string name;
+    std::string exportAs;
     std::weak_ptr<const Export> exprt;
 };
 
@@ -39,7 +39,7 @@ struct Export
 
 struct Section
 {
-    Section(std::string name, DWORD virtualAddress, DWORD sizeInFile, DWORD sizeVirtual);
+    Section(std::string exportAs, DWORD virtualAddress, DWORD sizeInFile, DWORD sizeVirtual);
     Section(IMAGE_SECTION_HEADER sectionHeader, FILE* peFile);
     bool IsInRange(DWORD Address) const;
     uint8_t Read(DWORD Address) const;
@@ -52,7 +52,7 @@ private:
     DWORD sizeInFile;
     DWORD sizeVirtual;
     uint8_t* data;
-    std::string name;
+    std::string exportAs;
 };
 
 class FileView
@@ -122,7 +122,7 @@ private:
     static std::map<std::string, std::weak_ptr<PeFile>> LoadedPeFiles;
 
     FILE* peFile = NULL;
-    std::string name;
+    std::string exportAs;
     IMAGE_DOS_HEADER dosHeader;
     IMAGE_NT_HEADERS32 ntHeaders;
     std::set<Section> sections;
@@ -139,7 +139,7 @@ private:
     void HandleExports(PeUsage& peUsage);
 public:
     const std::string& GetName() const;
-    std::shared_ptr<const Export> GetExport(std::string name) const;
+    std::shared_ptr<const Export> GetExport(std::string exportAs) const;
     std::shared_ptr<const Export> GetExport(DWORD ordinal) const;
     static std::shared_ptr<PeFile> Load(std::string path, PeUsage& peUsage);
     uint8_t Read(DWORD address) const;
